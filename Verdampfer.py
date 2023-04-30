@@ -19,7 +19,6 @@ from scipy import constants
 # Fluide
 # http://www.coolprop.org/fluid_properties/PurePseudoPure.html#list-of-fluids
 
-
 """Eingabe"""
 
 ### Abmessungen ###
@@ -28,7 +27,7 @@ di = 10e-3 #[m]
 da = 12e-3 #[m]
 Di = 16e-3 #[m]  
 Da = 18e-3 #[m]
-L_verdampfer = 40 #[m]
+L_verdampfer = 20 #[m]
 
 ### Randbedingungen ###
 Medien = ['Water','n-Propane','IsoButane'] 
@@ -149,20 +148,21 @@ def alpha_km(KM, m, h, P, P_w, l, Methode, D = di):
         5 - Sun_Mishima
         6 - Thome
         7 - Yun_Heo_Kim
-    
     """
     
-    H_KM = h[-1]
+    #print(f'Enthalpie: {h}')
+    H_KM = h[0][0]
+    H_W = h[1][-1]
     
     # Ethalpie der Flüssigkeit und des Gasen im Nassdampfgebiet in [J/kg]
     H_KM_G = cp.PropsSI('H', 'P', P, 'Q', 1, KM)
     H_KM_L = cp.PropsSI('H', 'P', P, 'Q', 0, KM)
     
     # Stoffeigenschaften in abhängigkeit der Enthalpie
-    rho_KM = cp.PropsSI('D', 'H', h[0], 'P', P, KM)
-    eta_KM = cp.PropsSI('V', 'P', P, 'H', h[0], KM)
-    lam_KM = cp.PropsSI('CONDUCTIVITY', 'P', P, 'H', h[0], KM)
-    Pr_KM = cp.PropsSI('PRANDTL', 'P', P, 'H', h[0], KM)
+    rho_KM = cp.PropsSI('D', 'H', H_KM, 'P', P, KM)
+    eta_KM = cp.PropsSI('V', 'P', P, 'H', H_KM, KM)
+    lam_KM = cp.PropsSI('CONDUCTIVITY', 'P', P, 'H', H_KM, KM)
+    Pr_KM = cp.PropsSI('PRANDTL', 'P', P, 'H', H_KM, KM)
     
     
     if H_KM > H_KM_L and H_KM < H_KM_G:
@@ -195,7 +195,7 @@ def alpha_km(KM, m, h, P, P_w, l, Methode, D = di):
         Tsiede_KM = cp.PropsSI('T', 'P', P, 'H', H_KM, KM)
         
         # Wassertemperatur 
-        T_W = cp.PropsSI('T', 'H', h[1], 'P', P_w, 'Water')
+        T_W = cp.PropsSI('T', 'H', H_W, 'P', P_w, 'Water')
         
         # Überkitzung der Wand in [K]
         Te = T_W - Tsiede_KM
@@ -253,7 +253,7 @@ def alpha_km(KM, m, h, P, P_w, l, Methode, D = di):
     else:
         alpha_KM = alpha_i(D, l, m/rho_KM, eta_KM/rho_KM, lam_KM, Pr_KM)
         print('alpha nach alpha_i')
-    print(alpha_KM)
+    #print(alpha_KM)
     return alpha_KM
 
 def Wärmeübertrager(x, h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di=di, da=da):
@@ -262,7 +262,9 @@ def Wärmeübertrager(x, h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di
     T_W = cp.PropsSI('T', 'P', p_w, 'H', h[1], 'Water')
     delta_T = T_W - T_KM
     
-    alphaKM = alpha_km(KM, mdot_KM, h[0], p_km, p_w, L, Methode)
+    alphaKM = alpha_km(KM, mdot_KM, h, p_km, p_w, L, Methode)
+    print(f'alphaKM: {alphaKM}')
+    #print(f'x: {x}')
     
     # alpha_km(KM, m, h, P, P_w, l, Methode, D = di)
     
@@ -281,8 +283,8 @@ def bc_wü(ha, hb):
     
     bc = np.zeros(2)
     bc[0] = ha[0] - hKM_ein
-    #bc[0] = ha[1] - hW_aus
-    bc[1] = hb[1] - hW_ein
+    bc[0] = ha[1] - hW_aus
+    #bc[1] = hb[1] - hW_ein
     
     return bc
 
@@ -292,7 +294,7 @@ def bc_wü(ha, hb):
 alpha_w = alpha_i(Di, L_verdampfer, Vdot_w, ny_w, lam_w, Pr_w, di)
 print(f'Wärmeübergangskoeffizient Wasser: {alpha_w}')
 
-Auflösung = 1000
+Auflösung = 100
 x_calc = np.linspace(0, L_verdampfer, Auflösung)
 
 'n-Propane','IsoButane'
@@ -328,7 +330,7 @@ hKM_res = res.y[0]
 hW_res = res.y[1]
 
 TKM_res = cp.PropsSI('T', 'P', p_KMein, 'H', hKM_res, KM) - 273.15
-TW_res = cp.PropsSI('T', 'P', p_w, 'H', hW_res, 'Water') -273.15
+TW_res = cp.PropsSI('T', 'P', p_w, 'H', hW_res, 'Water') - 273.15
 
 plt.figure(0)
 plt.plot(x_res, TKM_res, label = 'Kältemittel')
@@ -338,8 +340,3 @@ plt.title('Temperaturverläufe Im Verdampfer')
 plt.ylabel('Temperatur [°C]')
 plt.xlabel('Länge [m]')
 plt.legend()
-
-deltaH_KM = (hKM_res[-1] - hKM_res[0]) * mdot_KM
-print(f'Enthalieänderung KM: {deltaH_KM}')
-deltaH_W = (hW_res[-1] - hW_res[0]) * Vdot_w*rho_w
-print(f'Enthalieänderung W: {deltaH_W}')
