@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Praktikum Thermodynamik - Philip Besant
 
@@ -27,7 +26,7 @@ di = 10e-3 #[m]
 da = 12e-3 #[m]
 Di = 16e-3 #[m]  
 Da = 18e-3 #[m]
-L_verdampfer = 40 #[m]
+L_verdampfer = 14 #[m]
 
 ### Randbedingungen ###
 Medien = ['Water','n-Propane','IsoButane'] 
@@ -36,7 +35,7 @@ Medien = ['Water','n-Propane','IsoButane']
 Vdot_w = 6 / 60 / 1000 #[m³/s]
 Tw_ein = 60 + 273.15 #[K]
 #Tw_ein = 25.17 + 273.15 #[K]
-Tw_aus = 21 + 273.15 #[K]
+Tw_aus = 21.65 + 273.15 #[K]
 p_w = 3e5 #[Pa]
 
 # Kältemittel 
@@ -62,16 +61,29 @@ c_rohr = 470 #[J/kg] VDI-WA D6.1-Tab4
 lam_rohr = 15.4 #[W/(m*K)]
 
 
+
+k = 0
+
+
 """Funktionen"""
 
 # Druckverlust
-"""
-def DruckverlustND(rho_L, rho_G,tetha = 0):
+
+def DruckverlustND(rho, rho_L, rho_G, m, x, l, tetha = 0):
     
-    dp_statisch = (rho_L*(1-eps) + rho_G*eps)*constants.g*np.sin(tetha) # H3.2-(3)
-    dp_besch = 
+    eps = x/rho_G * ( (1 + 0.12*(1-x)) * (x/rho_G + (1-x)/rho_L) + \
+           (1.18*(1-x)*(constants.g*constants.Boltzmann*(rho_L-rho_G))**0.25) \
+            / (m*rho_L**0.5))**-1
     
-"""
+    dp_statisch = l * (rho_L*(1-eps) + rho_G*eps)*constants.g*np.sin(tetha) # H3.2-(3)
+    
+    dp_besch = m**2 * ((x[1]**2 / (eps*rho_G) + (1-x[1])/((1-eps)*rho*l)) \
+                    - (x[0]**2 / (eps*rho_G) + (1-x[0])/((1-eps)*rho*l)))
+    
+    dp_ges = dp_statisch + dp_besch
+    
+    return dp_ges
+    
 
 def DruckverlustFluid(Da, u, rho, ny, L, Di = 0):
     """
@@ -136,7 +148,7 @@ def alpha_i(d, l, Vdot, ny, lam, Pr, di=0):
        
     return alpha_i
 
-def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
+def alpha_km(KM, m, h, P, P_w, l, Methode, D = di):
     """
     Berechnung des Wärmeübergangskoeffizienten auf der KM-Seite
     Methode bei ND:
@@ -150,9 +162,11 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         7 - Yun_Heo_Kim
     """
     
+    global k
+    
     #print(f'Enthalpie: {h}')
-    H_KM = h_km
-    H_W = h_w
+    H_KM = h[0]
+    H_W = h[1]
     
     # Ethalpie der Flüssigkeit und des Gasen im Nassdampfgebiet in [J/kg]
     H_KM_G = cp.PropsSI('H', 'P', P, 'Q', 1, KM)
@@ -197,7 +211,7 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         # Wassertemperatur 
         T_W = cp.PropsSI('T', 'H', H_W, 'P', P_w, 'Water')
         
-        # Überkitzung der Wand in [K]
+        # Überhitzung der Wand in [K]
         Te = T_W - Tsiede_KM
         
         # Differenz im Sättigungsdruck in [Pa]
@@ -252,25 +266,19 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         
     else:
         alpha_KM = alpha_i(D, l, m/rho_KM, eta_KM/rho_KM, lam_KM, Pr_KM)
-        print('alpha nach alpha_i')
+        k+=1
+        #print('alpha nach alpha_i')
     #print(alpha_KM)
     return alpha_KM
 
-alpha_km = np.vectorize(alpha_km)
-
-def Wärmeübertrager(x, h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di=di, da=da):
+def Wärmeübertrager(h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di=di, da=da):
     
     T_KM = cp.PropsSI('T', 'P', p_km, 'H', h[0], KM)
     T_W = cp.PropsSI('T', 'P', p_w, 'H', h[1], 'Water')
     delta_T = T_W - T_KM
     
-    #print(h)
-    alphaKM = alpha_km(KM, mdot_KM, h[0], h[1], p_km, p_w, L, Methode)
-    #alphaKM = 100
+    alphaKM = alpha_km(KM, mdot_KM, h, p_km, p_w, L, Methode)
     print(f'alphaKM: {alphaKM}')
-    #print(f'x: {x}')
-    
-    # alpha_km(KM, m, h, P, P_w, l, Methode, D = di)
     
     Rl_W = 1/(alpha_w*np.pi*da)
     Rl_Rohr = np.log(da/di) / (2*np.pi*lam_rohr)
@@ -278,36 +286,26 @@ def Wärmeübertrager(x, h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di
 
     Rl_ges = Rl_W + Rl_Rohr + Rl_KM    
     
-    dh_KM = 1/Rl_ges  * delta_T / mdot_KM
-    dh_W = 1/Rl_ges * delta_T / mdot_W
+    dh_KM = 1/Rl_ges * L/Aufl * delta_T / mdot_KM
+    dh_W = 1/Rl_ges * L/Aufl * delta_T / mdot_W
     
-    return np.array([dh_KM, dh_W])
+    return np.array([dh_KM, dh_W, alphaKM])
 
-def bc_wü(ha, hb):    
-    
-    bc = np.zeros(2)
-    bc[0] = ha[0] - hKM_ein
-    #bc[1] = ha[1] - hW_aus
-    bc[1] = hb[1] - hW_ein
-    
-    return bc
 
       
 """Berechnung"""    
 
-alpha_w = alpha_i(Di, L_verdampfer, Vdot_w, ny_w, lam_w, Pr_w, di)
-print(f'Wärmeübergangskoeffizient Wasser: {alpha_w}')
 
-Auflösung = 100
+Auflösung = 2000
 x_calc = np.linspace(0, L_verdampfer, Auflösung)
+L_stück = L_verdampfer / Auflösung
 
-'n-Propane','IsoButane'
+A_Stück = (Di + da)/2 * np.pi * L_stück 
 
 KM = 'IsoButane'
 
-#cp.apply_simple_mixing_rule('IsoButane', 'n-Propane', 'linear')
-#KM = 'IsoButane[0.774]&n-Propane[0.226]'
-
+alpha_w = alpha_i(Di, L_verdampfer, Vdot_w, ny_w, lam_w, Pr_w, di)
+print(f'Wärmeübergangskoeffizient Wasser: {alpha_w}')
 
 Tsiede_KM = cp.PropsSI('T', 'P', p_KMein, 'Q', 0, KM) - 273.15
 print(f'Siedetemperatur start KM: {Tsiede_KM}')
@@ -318,29 +316,43 @@ hKM_ein = cp.PropsSI('H', 'P', p_KMein, 'T', T_KMein, KM)
 print(f'Eintrittsenthalpie KM: {hKM_ein}')
 hW_ein = cp.PropsSI('H', 'P', p_w, 'T', Tw_ein, Medien[0])
 hW_aus = cp.PropsSI('H', 'P', p_w, 'T', Tw_aus, Medien[0])
+print(f'Austrittsenthalpie W: {hW_aus}')
 
-h_a = np.zeros((2, x_calc.size))
-h_a[0, :] = hKM_ein
-h_a[1, :] = hW_ein
+mdot_W = Vdot_w * rho_w
 
-h_aivp = np.array([hW_ein, hW_aus])
+h = np.zeros((2, x_calc.size))
+h[0, :] = hKM_ein
+h[1, :] = hW_aus
+alpha_calc = []
 
-res = solve_bvp(lambda x, h: Wärmeübertrager(x, h, KM, p_KMein, p_w, mdot_KM, Vdot_w*rho_w, L_verdampfer, Auflösung, 2), bc_wü, x_calc, h_a)
-# res = solve_ivp(lambda x, h: Wärmeübertrager(x, h, KM, p_KMein, p_w, mdot_KM, Vdot_w*rho_w, L_verdampfer, Auflösung, 1), x_calc, h_aivp)
+for n in range(0, x_calc.size - 1):
+    
+    h_calc = np.array([h[0][n], h[1][n]])
+    
+    WÜ = Wärmeübertrager(h_calc, KM, p_KMein, p_w, mdot_KM, mdot_W, L_verdampfer, Auflösung, 1)
+    
+    h[0][n+1] = h[0][n] + WÜ[0]
+    h[1][n+1] = h[1][n] + WÜ[1]
+    alpha_calc.append(WÜ[2])
+    
+# Auslesen Ergebnissse
+hKM_res = h[0]
+hW_res = h[1]
 
-
-x_res = res.x
-hKM_res = res.y[0]
-hW_res = res.y[1]
-
+# Berechnung Temperatur
 TKM_res = cp.PropsSI('T', 'P', p_KMein, 'H', hKM_res, KM) - 273.15
 TW_res = cp.PropsSI('T', 'P', p_w, 'H', hW_res, 'Water') - 273.15
 
+# Darstellung Temperaturverlauf
 plt.figure(0)
-plt.plot(x_res, TKM_res, label = 'Kältemittel')
-plt.plot(x_res, TW_res, label = 'Wasser')
+plt.plot(x_calc, TKM_res, label = 'Kältemittel')
+plt.plot(x_calc, TW_res, label = 'Wasser')
 
 plt.title('Temperaturverläufe Im Verdampfer')
 plt.ylabel('Temperatur [°C]')
 plt.xlabel('Länge [m]')
 plt.legend()
+
+# Kontrolle zu Nassdampfanteil
+ND_Anteil = round((1 - k/Auflösung) *100)
+print(f'Anteil ND: {ND_Anteil}%')
