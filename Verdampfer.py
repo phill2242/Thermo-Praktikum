@@ -22,12 +22,12 @@ from scipy import constants
 """Eingabe"""
 
 ### Abmessungen ###
-# Rohre Dis Venzik S.70
+# Rohre Diss Venzik S.70
 di = 10e-3 #[m]
 da = 12e-3 #[m]
 Di = 16e-3 #[m]  
 Da = 18e-3 #[m]
-L_verdampfer = 40 #[m]
+L_verdampfer = 15 #[m]
 
 ### Randbedingungen ###
 Medien = ['Water','n-Propane','IsoButane'] 
@@ -136,7 +136,7 @@ def alpha_i(d, l, Vdot, ny, lam, Pr, di=0):
        
     return alpha_i
 
-def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
+def alpha_km(KM, m, h_km, h_water, P, P_w, l, Methode, D = di):
     """
     Berechnung des Wärmeübergangskoeffizienten auf der KM-Seite
     Methode bei ND:
@@ -152,7 +152,7 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
     
     #print(f'Enthalpie: {h}')
     H_KM = h_km
-    H_W = h_w
+    H_W = h_water
     
     # Ethalpie der Flüssigkeit und des Gasen im Nassdampfgebiet in [J/kg]
     H_KM_G = cp.PropsSI('H', 'P', P, 'Q', 1, KM)
@@ -198,10 +198,11 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         T_W = cp.PropsSI('T', 'H', H_W, 'P', P_w, 'Water')
         
         # Überkitzung der Wand in [K]
-        Te = T_W - Tsiede_KM
-        
+        #Te = T_W - Tsiede_KM
+        Te = 0
         # Differenz im Sättigungsdruck in [Pa]
-        dPsat = cp.PropsSI('P', 'T', T_W, 'Q', 0.5, KM) - cp.PropsSI('P', 'T', Tsiede_KM, 'Q', 0.5, KM)
+        #dPsat = cp.PropsSI('P', 'T', T_W, 'Q', 0.5, KM) - cp.PropsSI('P', 'T', Tsiede_KM, 'Q', 0.5, KM)
+        dPsat = 0
         Psat = P
         
         # Kritischer Druck des Kältemittels
@@ -226,7 +227,12 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         elif Methode == 2:
             
             alpha_KM = ht.boiling_flow.Chen_Edelstein(m, x, D, rhol, rhog, mul, mug, kl, Cpl, Hvap, sigma, dPsat, Te)
-        
+            if isinstance(alpha_KM,complex):
+                print(f"alpha {alpha_KM} nach Chen_Edelstein" )
+                print(f"T_W: {T_W} mit p {p_w} und h {H_W}")
+                print(f"T_siedeKM: {Tsiede_KM} mit p {P} und h {H_KM}")
+                print(f"{m}, {x}, {D}, {rhol}, {rhog}, {mul}, {mug}, {kl}, {Cpl}, {Hvap}, {sigma}, {dPsat}, {Te}")
+                print(f"m, x, D, rhol, rhog, mul, mug, kl, Cpl, Hvap, sigma, dPsat, Te")
         elif Methode == 3:
             
             alpha_KM =  ht.boiling_flow.Li_Wu(m, x, D, rhol, rhog, mul, kl, Hvap, sigma, q=None, Te = Te)
@@ -252,8 +258,12 @@ def alpha_km(KM, m, h_km, h_w, P, P_w, l, Methode, D = di):
         
     else:
         alpha_KM = alpha_i(D, l, m/rho_KM, eta_KM/rho_KM, lam_KM, Pr_KM)
-        print('alpha nach alpha_i')
+        #alpha_KM = 100
+        #print('alpha nach alpha_i')
     #print(alpha_KM)
+    if isinstance(alpha_KM, complex):
+        print(f"h_KM_in: {h_km}, p={P}")
+        raise ValueError("alpha cant be complex")
     return alpha_KM
 
 alpha_km = np.vectorize(alpha_km)
@@ -263,11 +273,13 @@ def Wärmeübertrager(x, h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di
     T_KM = cp.PropsSI('T', 'P', p_km, 'H', h[0], KM)
     T_W = cp.PropsSI('T', 'P', p_w, 'H', h[1], 'Water')
     delta_T = T_W - T_KM
+    if delta_T.any() < 0:
+        raise ValueError("no evaporator")
     
     #print(h)
     alphaKM = alpha_km(KM, mdot_KM, h[0], h[1], p_km, p_w, L, Methode)
     #alphaKM = 100
-    print(f'alphaKM: {alphaKM}')
+    #print(f'alphaKM: {alphaKM}')
     #print(f'x: {x}')
     
     # alpha_km(KM, m, h, P, P_w, l, Methode, D = di)
@@ -324,8 +336,9 @@ h_a[0, :] = hKM_ein
 h_a[1, :] = hW_ein
 
 h_aivp = np.array([hW_ein, hW_aus])
+mdot_W = 2*mdot_KM
 
-res = solve_bvp(lambda x, h: Wärmeübertrager(x, h, KM, p_KMein, p_w, mdot_KM, Vdot_w*rho_w, L_verdampfer, Auflösung, 2), bc_wü, x_calc, h_a)
+res = solve_bvp(lambda x, h: Wärmeübertrager(x, h, KM, p_KMein, p_w, mdot_KM, mdot_W, L_verdampfer, Auflösung, 2), bc_wü, x_calc, h_a, tol=1)
 # res = solve_ivp(lambda x, h: Wärmeübertrager(x, h, KM, p_KMein, p_w, mdot_KM, Vdot_w*rho_w, L_verdampfer, Auflösung, 1), x_calc, h_aivp)
 
 
@@ -343,4 +356,10 @@ plt.plot(x_res, TW_res, label = 'Wasser')
 plt.title('Temperaturverläufe Im Verdampfer')
 plt.ylabel('Temperatur [°C]')
 plt.xlabel('Länge [m]')
+plt.legend()
+
+plt.figure(1)
+plt.plot(x_res, hKM_res, label="Kältemittel")
+plt.plot(x_res, hW_res, label="Wasser")
+plt.title("Enthalpieverläufe im Verdampfer")
 plt.legend()
