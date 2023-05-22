@@ -8,9 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import CoolProp.CoolProp as cp
 import ht as ht
-import heat_transfer_evaporator as hte
+#import heat_transfer_evaporator as hte
 from scipy.integrate import solve_bvp
 from scipy import constants
+import pandas as pd
 
 #### CoolProp
 # Eigenschaften
@@ -18,8 +19,50 @@ from scipy import constants
 # Fluide
 # http://www.coolprop.org/fluid_properties/PurePseudoPure.html#list-of-fluids
 
-"""Eingabe"""
+"""Einlesen Messdaten"""
+#excel = pd.read_excel("C:\\Users\\phili\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
+excel = pd.read_excel("E:\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
 
+# Auswahl Messreihe und Berechnungsmethode
+MR = 0 # 0 bis 6 ohne 3
+BR = 7
+
+p_mdKMein = excel.loc[MR]['Druck Verdampfer ein'] * 1e5
+m_mdKM = excel.loc[MR]['Massenstrom KM']
+m_mdW = excel.loc[MR]['Massenstrom Verdampfer SF']
+
+x_md = [0, 1.4, 2.8, 4.2, 5.6, 7, 8.4, 9.8, 11.2, 12.6, 14]
+
+# Messdaten KM
+T9 = excel.loc[MR]['Temperatur Verdampfer ein']
+T21 = excel.loc[MR]['Temperatur 21']
+T22 = excel.loc[MR]['Temperatur 22']
+T23 = excel.loc[MR]['Temperatur 23']
+T24 = excel.loc[MR]['Temperatur 24']
+T25 = excel.loc[MR]['Temperatur 25']
+T13 = excel.loc[MR]['Temperatur 13 Wasserseite']
+T14 = excel.loc[MR]['Temperatur 14 Wasserseite']
+T15 = excel.loc[MR]['Temperatur 15 Wasserseite']
+T16 = excel.loc[MR]['Temperatur 16 Wasserseite']
+T7 = excel.loc[MR]['Temperatur Verdampfer aus']
+T_mdKM = [T9, T21, T13, T22, T14, T23, T15, T24, T16, T25, T7]
+
+# Messdaten Wasser
+T1 = excel.loc[MR]['Temperatur Verdampfer Vorlauf']
+T30 = excel.loc[MR]['Temperatur 30']
+T29 = excel.loc[MR]['Temperatur 29']
+T28 = excel.loc[MR]['Temperatur 28']
+T27 = excel.loc[MR]['Temperatur 27']
+T26 = excel.loc[MR]['Temperatur 26']
+T20 = excel.loc[MR]['Temperatur 20 Gasseite']
+T19 = excel.loc[MR]['Temperatur 19 Gasseite']
+T18 = excel.loc[MR]['Temperatur 18 Gasseite']
+T17 = excel.loc[MR]['Temperatur 17 Gasseite']
+T2 = excel.loc[MR]['Temperatur Verdampfer Rücklauf']
+T_mdW = [T2, T26, T17, T27, T18, T28, T19, T29, T20, T30, T1]
+
+
+"""Eingabe"""
 ### Abmessungen ###
 # Rohre Dis Venzik S.70
 di = 10e-3 #[m]
@@ -32,16 +75,23 @@ L_verdampfer = 14 #[m]
 Medien = ['Water','n-Propane','IsoButane'] 
 
 # Wasser
-Vdot_w = 6 / 60 / 1000 #[m³/s]
-Tw_ein = 60 + 273.15 #[K]
+#Vdot_w = 6 / 60 / 1000 #[m³/s]
+#Tw_ein = 60 + 273.15 #[K]
 #Tw_ein = 25.17 + 273.15 #[K]
-Tw_aus = 21.65 + 273.15 #[K]
+#Tw_aus = 21.65 + 273.15 #[K]
 p_w = 3e5 #[Pa]
 
+Tw_aus = T_mdW[0] + 273.15 #[K]
+Tw_ein = T_mdW[-1] + 273.15 #[K]
+
 # Kältemittel 
-p_KMein = 2.75e5 #[Pa]
-mdot_KM = 0.0063 #[kg/s]
-T_KMein = 15 + 273.15 #[K]
+#p_KMein = 2.75e5 #[Pa]
+#mdot_KM = 0.0063 #[kg/s]
+#T_KMein = 15 + 273.15 #[K]
+
+p_KMein = p_mdKMein
+mdot_KM = m_mdKM
+T_KMein = T_mdKM[0] + 273.15 #[K]
 
 ### Stoffdaten ###
 h_w = cp.PropsSI('H', 'P', p_w, 'T', Tw_aus, 'water')
@@ -55,13 +105,17 @@ eta_w = cp.PropsSI('VISCOSITY', 'P', p_w, 'H', h_w, 'water') # [Pa*s]
 Pr_w =  cp.PropsSI('PRANDTL', 'P', p_w, 'H', h_w, 'water')
 ny_w = eta_w/rho_w # [m²/s]
 
+
+
+Vdot_w = m_mdW / rho_w
+
+
 # Stahl 1.4571 / Werkstoff37
 rho_rohr = 7.98e3 #[kg/m³] VDI-WA D6.1-Tab2
 c_rohr = 470 #[J/kg] VDI-WA D6.1-Tab4
 lam_rohr = 15.4 #[W/(m*K)]
 
-
-
+# Zurücksetzen Zähler
 k = 0
 
 
@@ -230,8 +284,8 @@ def alpha_km(KM, m, h, P, P_w, l, Methode, D = di):
         
         if Methode == 0:
             
-            alpha_KM = hte.alpha_sieden()
-            # he.alpha_KM = 1000
+            #alpha_KM = hte.alpha_sieden()
+            alpha_KM = 1000
         
         elif Methode == 1:
             
@@ -278,7 +332,7 @@ def Wärmeübertrager(h, KM, p_km, p_w, mdot_KM, mdot_W, L, Aufl, Methode, di=di
     delta_T = T_W - T_KM
     
     alphaKM = alpha_km(KM, mdot_KM, h, p_km, p_w, L, Methode)
-    print(f'alphaKM: {alphaKM}')
+    #print(f'alphaKM: {alphaKM}')
     
     Rl_W = 1/(alpha_w*np.pi*da)
     Rl_Rohr = np.log(da/di) / (2*np.pi*lam_rohr)
@@ -302,7 +356,7 @@ L_stück = L_verdampfer / Auflösung
 
 A_Stück = (Di + da)/2 * np.pi * L_stück 
 
-KM = 'IsoButane'
+KM = 'n-Propane'
 
 alpha_w = alpha_i(Di, L_verdampfer, Vdot_w, ny_w, lam_w, Pr_w, di)
 print(f'Wärmeübergangskoeffizient Wasser: {alpha_w}')
@@ -329,7 +383,7 @@ for n in range(0, x_calc.size - 1):
     
     h_calc = np.array([h[0][n], h[1][n]])
     
-    WÜ = Wärmeübertrager(h_calc, KM, p_KMein, p_w, mdot_KM, mdot_W, L_verdampfer, Auflösung, 1)
+    WÜ = Wärmeübertrager(h_calc, KM, p_KMein, p_w, mdot_KM, mdot_W, L_verdampfer, Auflösung, BR)
     
     h[0][n+1] = h[0][n] + WÜ[0]
     h[1][n+1] = h[1][n] + WÜ[1]
@@ -345,10 +399,13 @@ TW_res = cp.PropsSI('T', 'P', p_w, 'H', hW_res, 'Water') - 273.15
 
 # Darstellung Temperaturverlauf
 plt.figure(0)
-plt.plot(x_calc, TKM_res, label = 'Kältemittel')
-plt.plot(x_calc, TW_res, label = 'Wasser')
+plt.plot(x_calc, TKM_res, 'b', label = 'Kältemittel')
+plt.plot(x_calc, TW_res, 'r',label = 'Wasser')
 
-plt.title('Temperaturverläufe Im Verdampfer')
+plt.plot(x_md, T_mdKM, 'ob', label = 'MD-Kältemittel')
+plt.plot(x_md, T_mdW, 'or', label = 'MD-Wasser',)
+
+plt.title(f'Temperaturverläufe Im Verdampfer MR{MR} BR{BR}')
 plt.ylabel('Temperatur [°C]')
 plt.xlabel('Länge [m]')
 plt.legend()
