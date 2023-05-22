@@ -15,8 +15,8 @@ from scipy.integrate import solve_ivp
 from scipy import constants
 
 """Einlesen Messdaten"""
-excel = pd.read_excel("C:\\Users\\phili\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
-#excel = pd.read_excel("E:\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
+#excel = pd.read_excel("C:\\Users\\phili\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
+excel = pd.read_excel("E:\\OneDrive - Universitaet Duisburg-Essen\\Thermo Praktikum\\Daten Wärmepumpe\\Alex Daten Wärmepumpe\\Daten Maurits.xlsx", skiprows=0)
 
 # Auswahl Messreihe und Berechnungsmethode
 MR = 9 # 9 bis 57
@@ -31,11 +31,11 @@ MR = 9 # 9 bis 57
  6 - Thome
  7 - Yun_Heo_Kim
  """
-BR = 7
+BR = 1
 
 p_mdKMein = excel.loc[MR]['Druck Verdampfer ein'] * 1e5
 m_mdKM = excel.loc[MR]['Massenstrom KM']
-m_mdW = excel.loc[MR]['Massenstrom Verdampfer SF'] 
+m_mdW = excel.loc[MR]['Massenstrom Verdampfer SF']
 
 x_md = [0, 1.4, 2.8, 4.2, 5.6, 7, 8.4, 9.8, 11.2, 12.6, 14]
 
@@ -104,8 +104,6 @@ T_KMein = T_mdKM[0] + 273.15 #[K]
 
 ### Stoffdaten ###
 h_w = cp.PropsSI('H', 'P', p_w, 'T', Tw_ein, 'water')
-
-print(f'Eintrittsenthalpie W: {h_w}')
 
 rho_w = cp.PropsSI('D', 'P', p_w, 'H', h_w, 'water') #[kg/m³] 
 cp_w = cp.PropsSI('CPMASS', 'P', p_w, 'H', h_w, 'water') #[J/(kg*K)]
@@ -209,7 +207,7 @@ def alpha_i(d, l, Vdot, ny, lam, Pr, di=0):
        
     return alpha_i
 
-def alpha_km(KM, m, T, P, P_w, l, Methode, D = di):
+def alpha_km(KM, m, T, P, P_w, l, Methode, xlocal, D = di):
     """
     Berechnung des Wärmeübergangskoeffizienten auf der KM-Seite
     Methode bei ND:
@@ -292,8 +290,8 @@ def alpha_km(KM, m, T, P, P_w, l, Methode, D = di):
         
         if Methode == 0:
             
-            alpha_KM = hte.alpha_sieden()
-            # he.alpha_KM = 1000
+            p1 = hte.PointND(T_KM, x, KM, 'Testpunkt Isobutan')
+            alpha_KM = p1.alpha_sieden(m, D, xlocal)
         
         elif Methode == 1:
             
@@ -341,15 +339,14 @@ def Wärmeübertrager(x, T, KM, p_km, p_w, mdot_KM, mdot_W, L, Methode, di=di, d
     if delta_T.any() < 0:
         raise ValueError("no evaporator")
     
-    alphaKM = alpha_km(KM, mdot_KM, T, p_km, p_w, L, Methode)
+    alphaKM = alpha_km(KM, mdot_KM, T, p_km, p_w, L, Methode, x)
     #print(alphaKM)
-    
     
     Rl_W = 1/(alpha_w*np.pi*da)
     Rl_Rohr = np.log(da/di) / (2*np.pi*lam_rohr)
     Rl_KM = 1/(alphaKM*np.pi*di)
 
-    Rl_ges = Rl_W + Rl_Rohr + Rl_KM    
+    Rl_ges = Rl_W + Rl_Rohr + Rl_KM
     
     dT_KM = 1/Rl_ges * delta_T / mdot_KM / cp.PropsSI('CPMASS', 'P', p_km, 'T', T_KM, KM) 
     dT_W = 1/Rl_ges * delta_T / mdot_W / cp_w
@@ -373,18 +370,42 @@ Ttau_KM = cp.PropsSI('T', 'P', p_KMein, 'Q', 1, KM) - 273.15
 print(f'Siedetemperatur ende KM: {Ttau_KM}')
 
 hKM_ein = cp.PropsSI('H', 'P', p_KMein, 'T', T_KMein, KM)
-print(f'Eintrittsenthalpie KM: {hKM_ein}')
-hW_ein = cp.PropsSI('H', 'P', p_w, 'T', Tw_ein, Medien[0])
 hW_aus = cp.PropsSI('H', 'P', p_w, 'T', Tw_aus, Medien[0])
 
 T0 = np.array([T_KMein, Tw_aus])
 
+
+# def Wärmeübertrager(x, T, KM, p_km, p_w, mdot_KM, mdot_W, L, Methode, di=di, da=da):
+# solve_ivp(Kollektor,(t_calc[0],t_calc[-1]),T0,t_eval=t_calc,args=(),atol=1e-9,rtol=1e-6)
 res = solve_ivp(lambda x, T: Wärmeübertrager(x, T, KM, p_KMein, p_w, mdot_KM, m_mdW, L_verdampfer, BR),(x_calc[0],x_calc[-1]),T0,t_eval=x_calc,args=(),atol=1e-9,rtol=1e-6)
 
 x_res = res.t
 TKM_res = res.y[0]
 TW_res = res.y[1]
-           
+
+
+
+
+print('')
+T_KMausber = TKM_res[-1]
+T_Weinber = TW_res[-1]
+print(f'berechnete Wassereintrittstemperatur: {T_Weinber} K')
+h_KMausber = cp.PropsSI('H', 'P', p_KMein, 'T', T_KMausber, KM)
+h_Weinber = cp.PropsSI('H', 'P', p_w, 'T', T_Weinber, 'water')
+Q_Wber = (h_Weinber - hW_aus) * m_mdW
+Q_KMber = (h_KMausber - hKM_ein) * m_mdKM
+print(f'berechneter Wärmestrom Wasser: H_w = {Q_Wber} W')
+print(f'berechneter Wärmestrom Kältemittel: H_km = {Q_KMber} W')
+
+hKM_ausmd = cp.PropsSI('H', 'P', p_KMein, 'T', T_mdKM[-1] + 273.15, KM)
+Q_Wmd = (h_w - hW_aus) * m_mdW
+Q_KMmd = (hKM_ausmd - hKM_ein) * m_mdKM
+print(f'gemessener Wärmestrom Wasser: H_w = {Q_Wmd} W')
+print(f'gemessener Wärmestrom Kältemittel: H_km = {Q_KMmd} W')
+
+
+
+    
 plt.figure(0)
 plt.plot(x_res, TKM_res - 273.15, 'b', label = 'Kältemittel')
 plt.plot(x_res, TW_res - 273.15, 'r', label = 'Wasser')
