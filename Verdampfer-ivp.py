@@ -258,7 +258,7 @@ def alpha_km(KM, m, T, P, P_w, l, Methode, xlocal, D = di):
         
         # Wärmekapazitäten (isobar) der Flüssigkeit und des Gasen im Nassdampfgebiet in [J/(kg*K)]
         Cpl = cp.PropsSI('CPMASS', 'P', P, 'T', Tsiede0_KM-0.1, KM)
-        Cpg = cp.PropsSI('CP0MASS', 'P', P, 'Q', 1, KM)
+        Cpg = cp.PropsSI('CPMASS', 'P', P, 'T', Tsiede1_KM+0.1, KM)
         
         # Verdampfungsenthalpie in [J/kg]
         Hvap = H_KM_G - H_KM_L
@@ -339,6 +339,12 @@ def Wärmeübertrager(x, T, KM, p_km, p_w, mdot_KM, mdot_W, L, Methode, di=di, d
     if delta_T.any() < 0:
         raise ValueError("no evaporator")
     
+    lamW = cp.PropsSI('CONDUCTIVITY', 'P', p_w, 'T', T_W, 'water') #[W/(m*K)]
+    etaW = cp.PropsSI('VISCOSITY', 'P', p_w, 'T', T_W, 'water') # [Pa*s]
+    PrW =  cp.PropsSI('PRANDTL', 'P', p_w, 'T', T_W, 'water')
+    nyW = etaW/rho_w # [m²/s]
+    
+    alpha_w = alpha_i(Di, L, Vdot_w, nyW, lamW, PrW, da)
     alphaKM = alpha_km(KM, mdot_KM, T, p_km, p_w, L, Methode, x)
     #print(alphaKM)
     
@@ -349,15 +355,22 @@ def Wärmeübertrager(x, T, KM, p_km, p_w, mdot_KM, mdot_W, L, Methode, di=di, d
     Rl_ges = Rl_W + Rl_Rohr + Rl_KM
     
     dT_KM = 1/Rl_ges * delta_T / mdot_KM / cp.PropsSI('CPMASS', 'P', p_km, 'T', T_KM, KM) 
-    dT_W = 1/Rl_ges * delta_T / mdot_W / cp_w
+    dT_W = 1/Rl_ges * delta_T / mdot_W / cp.PropsSI('CPMASS', 'P', p_w, 'T', T_W, 'water')
+    dT_W = round(dT_W, 0)
     
-    return np.array([dT_KM, dT_W])
+    """
+    if x > 5:
+        dT_W = 0.5
+    else:
+        dT_W = -0.5
+    """
+    print(f'[{dT_KM}, {dT_W}]')
+    
+    dT = np.array([dT_KM, dT_W])
+    return dT
 
       
 """Berechnung"""    
-
-alpha_w = alpha_i(Di, L_verdampfer, Vdot_w, ny_w, lam_w, Pr_w, da)
-print(f'Wärmeübergangskoeffizient Wasser: {alpha_w}')
 
 Auflösung = 100
 x_calc = np.linspace(0, L_verdampfer, Auflösung)
@@ -372,8 +385,16 @@ print(f'Siedetemperatur ende KM: {Ttau_KM}')
 hKM_ein = cp.PropsSI('H', 'P', p_KMein, 'T', T_KMein, KM)
 hW_aus = cp.PropsSI('H', 'P', p_w, 'T', Tw_aus, Medien[0])
 
-T0 = np.array([T_KMein, Tw_aus])
 
+
+
+# Überprüfen Temperaturgradienten
+print('[dT_KM, dT_W]')
+# Rest in Wärmeübertrager Funktion
+
+
+
+T0 = np.array([T_KMein, Tw_aus])
 
 # def Wärmeübertrager(x, T, KM, p_km, p_w, mdot_KM, mdot_W, L, Methode, di=di, da=da):
 # solve_ivp(Kollektor,(t_calc[0],t_calc[-1]),T0,t_eval=t_calc,args=(),atol=1e-9,rtol=1e-6)
@@ -384,8 +405,7 @@ TKM_res = res.y[0]
 TW_res = res.y[1]
 
 
-
-
+# Überprüfen Energieerhaltung
 print('')
 T_KMausber = TKM_res[-1]
 T_Weinber = TW_res[-1]
@@ -394,18 +414,16 @@ h_KMausber = cp.PropsSI('H', 'P', p_KMein, 'T', T_KMausber, KM)
 h_Weinber = cp.PropsSI('H', 'P', p_w, 'T', T_Weinber, 'water')
 Q_Wber = (h_Weinber - hW_aus) * m_mdW
 Q_KMber = (h_KMausber - hKM_ein) * m_mdKM
-print(f'berechneter Wärmestrom Wasser: H_w = {Q_Wber} W')
-print(f'berechneter Wärmestrom Kältemittel: H_km = {Q_KMber} W')
+print(f'berechneter Wärmestrom Wasser: Q_w = {Q_Wber} W')
+print(f'berechneter Wärmestrom Kältemittel: Q_km = {Q_KMber} W')
 
 hKM_ausmd = cp.PropsSI('H', 'P', p_KMein, 'T', T_mdKM[-1] + 273.15, KM)
 Q_Wmd = (h_w - hW_aus) * m_mdW
 Q_KMmd = (hKM_ausmd - hKM_ein) * m_mdKM
-print(f'gemessener Wärmestrom Wasser: H_w = {Q_Wmd} W')
-print(f'gemessener Wärmestrom Kältemittel: H_km = {Q_KMmd} W')
+print(f'gemessener Wärmestrom Wasser: Q_w = {Q_Wmd} W')
+print(f'gemessener Wärmestrom Kältemittel: Q_km = {Q_KMmd} W')
 
-
-
-    
+# Grafische darstellung der Ergebnisse
 plt.figure(0)
 plt.plot(x_res, TKM_res - 273.15, 'b', label = 'Kältemittel')
 plt.plot(x_res, TW_res - 273.15, 'r', label = 'Wasser')
